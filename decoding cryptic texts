@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Codebase Explainer — Runs in Your Browser</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+ 
+  :root {
+    --bg:      #0d0d10;
+    --bg2:     #13131a;
+    --bg3:     #1a1a24;
+    --border:  rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.13);
+    --text:    #e8e8f0;
+    --muted:   #888;
+    --faint:   #4a4a5a;
+    --accent:  #818cf8;
+    --accent2: #a5b4fc;
+    --green:   #4ade80;
+    --amber:   #fbbf24;
+    --red:     #f87171;
+    --mono:    'JetBrains Mono', 'Fira Mono', monospace;
+    --sans:    'Inter', system-ui, sans-serif;
+    --r:       10px;
+  }
+ 
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 2.5rem 1rem 5rem;
+  }
+ 
+  .container { width: 100%; max-width: 800px; }
+ 
+  /* ── Hero ── */
+  .hero { margin-bottom: 2rem; }
+  .hero h1 {
+    font-size: 26px; font-weight: 700; letter-spacing: -0.03em;
+    margin-bottom: 6px;
+  }
+  .hero h1 span { color: var(--accent2); }
+  .hero p { font-size: 14px; color: var(--muted); }
+  .privacy-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2);
+    border-radius: 99px; padding: 3px 10px; font-size: 11px;
+    color: var(--green); font-weight: 600; margin-bottom: 10px;
+    letter-spacing: 0.04em;
+  }
+ 
+  /* ── Model loader panel ── */
+  .loader-panel {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--r); padding: 20px; margin-bottom: 1.25rem;
+  }
+  .loader-panel h2 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .loader-panel p { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+ 
+  .model-select-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  select {
+    background: var(--bg3); border: 1px solid var(--border2);
+    border-radius: 6px; padding: 7px 10px; font-size: 13px; color: var(--text);
+    outline: none; cursor: pointer; flex: 1; min-width: 180px;
+  }
+  select:focus { border-color: var(--accent); }
+ 
+  .load-btn {
+    background: var(--accent); color: #fff; border: none;
+    border-radius: 7px; padding: 8px 18px; font-size: 13px; font-weight: 600;
+    cursor: pointer; white-space: nowrap; transition: opacity 0.15s;
+  }
+  .load-btn:hover { opacity: 0.88; }
+  .load-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+ 
+  /* progress */
+  .progress-wrap {
+    margin-top: 14px; display: none;
+  }
+  .progress-wrap.visible { display: block; }
+  .progress-label {
+    display: flex; justify-content: space-between;
+    font-size: 12px; color: var(--muted); margin-bottom: 6px;
+  }
+  .progress-bar-bg {
+    height: 4px; background: var(--bg3);
+    border-radius: 99px; overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%; background: var(--accent);
+    border-radius: 99px; width: 0%;
+    transition: width 0.3s ease;
+  }
+  .progress-sub { font-size: 11px; color: var(--faint); margin-top: 5px; }
+ 
+  .ready-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--green); font-weight: 500;
+    margin-top: 10px;
+  }
+  .dot-green {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+    box-shadow: 0 0 6px rgba(74,222,128,0.5);
+  }
+ 
+  /* ── Input card ── */
+  .card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--r); overflow: hidden; margin-bottom: 1.25rem;
+  }
+ 
+  .tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--bg); }
+  .tab {
+    padding: 11px 20px; font-size: 13px; color: var(--muted);
+    cursor: pointer; border-bottom: 2px solid transparent;
+    background: none; border-top: none; border-left: none; border-right: none;
+    transition: color 0.15s;
+  }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+ 
+  .tab-panel { display: none; padding: 16px; }
+  .tab-panel.active { display: block; }
+ 
+  .drop-zone {
+    border: 1.5px dashed var(--border2); border-radius: 8px; padding: 2.5rem;
+    text-align: center; cursor: pointer; position: relative;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .drop-zone:hover { border-color: var(--accent); background: rgba(129,140,248,0.04); }
+  .drop-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .drop-zone .dz-icon { font-size: 28px; margin-bottom: 8px; }
+  .drop-zone p { font-size: 14px; color: var(--muted); }
+  .drop-zone small { font-size: 12px; color: var(--faint); }
+ 
+  .file-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+  .chip {
+    display: flex; align-items: center; gap: 5px;
+    background: var(--bg3); border: 1px solid var(--border2);
+    border-radius: 99px; padding: 3px 10px 3px 8px;
+    font-size: 12px; color: var(--muted);
+  }
+  .chip button { background: none; border: none; cursor: pointer; color: var(--faint); font-size: 14px; padding: 0; line-height: 1; }
+  .chip button:hover { color: var(--red); }
+ 
+  textarea {
+    width: 100%; background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px; font-family: var(--mono);
+    font-size: 12.5px; color: var(--text); resize: vertical;
+    min-height: 200px; outline: none; line-height: 1.6;
+  }
+  textarea:focus { border-color: var(--accent); }
+ 
+  .options-row {
+    display: flex; gap: 10px; align-items: center; padding: 14px 16px;
+    border-top: 1px solid var(--border); background: var(--bg); flex-wrap: wrap;
+  }
+  .options-row label { font-size: 12px; color: var(--muted); }
+ 
+  .explain-btn {
+    margin-left: auto; background: var(--accent); color: #fff; border: none;
+    border-radius: 7px; padding: 9px 22px; font-size: 13px; font-weight: 700;
+    cursor: pointer; display: flex; align-items: center; gap: 6px;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  .explain-btn:hover { opacity: 0.88; }
+  .explain-btn:active { transform: scale(0.98); }
+  .explain-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+ 
+  /* ── Result ── */
+  .result {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--r); overflow: hidden;
+  }
+  .result-header {
+    padding: 11px 16px; border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+    background: var(--bg);
+  }
+  .result-header span { font-size: 12px; color: var(--muted); }
+  .copy-btn {
+    background: none; border: 1px solid var(--border2); border-radius: 5px;
+    padding: 4px 10px; font-size: 11px; color: var(--muted); cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .copy-btn:hover { border-color: var(--accent); color: var(--accent2); }
+ 
+  .stream-pre {
+    padding: 20px; font-size: 14px; line-height: 1.8;
+    color: #ccc; white-space: pre-wrap; font-family: var(--sans);
+    min-height: 60px;
+  }
+ 
+  .expl-section { margin-bottom: 1.4rem; }
+  .expl-section:last-child { margin-bottom: 0; }
+  .expl-tag {
+    display: inline-block; font-size: 10px; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--accent2); background: rgba(129,140,248,0.12);
+    border-radius: 4px; padding: 2px 7px; margin-bottom: 8px;
+  }
+  .expl-content { font-size: 14px; line-height: 1.8; color: #ccc; }
+  .expl-content ul { padding-left: 1.25rem; }
+  .expl-content li { margin-bottom: 5px; }
+  .expl-content code {
+    font-family: var(--mono); font-size: 12px;
+    background: var(--bg3); border: 1px solid var(--border2);
+    border-radius: 4px; padding: 1px 5px; color: var(--accent2);
+  }
+ 
+  .loading-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 1.5rem; color: var(--muted); font-size: 14px;
+  }
+  .spinner {
+    width: 16px; height: 16px; border: 2px solid var(--border2);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 0.7s linear infinite; flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+ 
+  .error-bar {
+    padding: 12px 16px; font-size: 13px; color: var(--red);
+    background: rgba(248,113,113,0.07); border: 1px solid rgba(248,113,113,0.18);
+    border-radius: var(--r); margin-top: 1rem;
+  }
+ 
+  .footer {
+    margin-top: 2.5rem; text-align: center; font-size: 12px; color: var(--faint);
+  }
+ 
+  @media (max-width: 500px) {
+    .options-row { flex-direction: column; align-items: stretch; }
+    .explain-btn { margin-left: 0; justify-content: center; }
+    .model-select-row { flex-direction: column; }
+    .load-btn { width: 100%; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+ 
+  <!-- Hero -->
+  <div class="hero">
+    <div class="privacy-pill">🔒 100% offline — runs in your browser</div>
+    <h1>Codebase Explainer <span>in plain english</span></h1>
+    <p>No API key. No server. No code ever leaves your machine. Model runs entirely in your browser.</p>
+  </div>
+ 
+  <!-- Model loader -->
+  <div class="loader-panel" id="loaderPanel">
+    <h2>Step 1 — Load the AI model</h2>
+    <p>Downloaded once, then cached in your browser. Choose smaller for speed, larger for quality.</p>
+ 
+    <div class="model-select-row">
+      <select id="modelSelect">
+        <option value="Llama-3.2-1B-Instruct-q4f16_1-MLC">Llama 3.2 1B — fast, ~700MB (recommended to start)</option>
+        <option value="Llama-3.2-3B-Instruct-q4f16_1-MLC">Llama 3.2 3B — better quality, ~1.8GB</option>
+        <option value="Phi-3.5-mini-instruct-q4f16_1-MLC">Phi-3.5 Mini — great for code, ~2.2GB</option>
+        <option value="Mistral-7B-Instruct-v0.3-q4f16_1-MLC">Mistral 7B — highest quality, ~4.5GB</option>
+      </select>
+      <button class="load-btn" id="loadBtn" onclick="loadModel()">Load model</button>
+    </div>
+ 
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-label">
+        <span id="progressLabel">Downloading model...</span>
+        <span id="progressPct">0%</span>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="progressFill"></div>
+      </div>
+      <div class="progress-sub" id="progressSub">This is a one-time download. Subsequent loads use your browser cache.</div>
+    </div>
+ 
+    <div id="readyBadge" style="display:none;" class="ready-badge">
+      <div class="dot-green"></div>
+      <span id="readyText">Model loaded and ready</span>
+    </div>
+  </div>
+ 
+  <!-- Input card -->
+  <div class="card">
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('paste')">Paste code</button>
+      <button class="tab" onclick="switchTab('upload')">Upload files</button>
+    </div>
+ 
+    <div class="tab-panel active" id="tab-paste">
+      <textarea id="codeInput" placeholder="// paste your code here...&#10;&#10;function processOrder(cart, user) {&#10;  const total = cart.items.reduce((s, i) => s + i.price * i.qty, 0);&#10;  return checkout(total, user.id);&#10;}"></textarea>
+    </div>
+ 
+    <div class="tab-panel" id="tab-upload">
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" multiple accept=".js,.ts,.jsx,.tsx,.py,.php,.rb,.go,.java,.cs,.cpp,.c,.html,.css,.json,.yaml,.yml,.md,.txt" />
+        <div class="dz-icon">📂</div>
+        <p>Drop files here or click to browse</p>
+        <small>.js .ts .py .php .go .java .rb .json and more</small>
+      </div>
+      <div class="file-chips" id="fileChips"></div>
+    </div>
+ 
+    <div class="options-row">
+      <label for="audience">Explain to:</label>
+      <select id="audience">
+        <option value="beginner">a complete beginner</option>
+        <option value="junior" selected>a junior developer</option>
+        <option value="manager">a non-tech manager</option>
+        <option value="senior">a senior dev (concise)</option>
+      </select>
+      <button class="explain-btn" id="explainBtn" onclick="explain()" disabled>
+        ✦ Explain in plain english
+      </button>
+    </div>
+  </div>
+ 
+  <div id="resultArea"></div>
+ 
+  <div class="footer">Everything runs locally in your browser · No data is sent anywhere · <a href="https://webllm.mlc.ai" target="_blank" rel="noopener" style="color:var(--faint);">Powered by WebLLM</a></div>
+ 
+</div>
+ 
+<script type="module">
+import * as webllm from 'https://esm.run/@mlc-ai/web-llm';
+ 
+let engine = null;
+ 
+// ── File handling ──
+const files = new Map();
+const fileInput = document.getElementById('fileInput');
+const fileChips = document.getElementById('fileChips');
+ 
+fileInput.addEventListener('change', e => loadFiles(e.target.files));
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.style.borderColor = 'var(--accent)'; });
+dz.addEventListener('dragleave', () => dz.style.borderColor = '');
+dz.addEventListener('drop', e => { e.preventDefault(); dz.style.borderColor = ''; loadFiles(e.dataTransfer.files); });
+ 
+function loadFiles(list) {
+  Array.from(list).forEach(f => {
+    const r = new FileReader();
+    r.onload = e => { files.set(f.name, e.target.result); renderChips(); };
+    r.readAsText(f);
+  });
+}
+function renderChips() {
+  fileChips.innerHTML = '';
+  files.forEach((_, name) => {
+    const c = document.createElement('div'); c.className = 'chip';
+    c.innerHTML = `<span>📄</span><span>${name}</span><button onclick="window._delFile('${name}')">×</button>`;
+    fileChips.appendChild(c);
+  });
+}
+window._delFile = n => { files.delete(n); renderChips(); };
+ 
+// ── Tab switching ──
+window.switchTab = t => {
+  document.querySelectorAll('.tab').forEach((b, i) => b.classList.toggle('active', (i === 0) === (t === 'paste')));
+  document.getElementById('tab-paste').classList.toggle('active', t === 'paste');
+  document.getElementById('tab-upload').classList.toggle('active', t === 'upload');
+};
+ 
+// ── Model loading ──
+window.loadModel = async () => {
+  const modelId = document.getElementById('modelSelect').value;
+  const loadBtn = document.getElementById('loadBtn');
+  const progressWrap = document.getElementById('progressWrap');
+  const progressFill = document.getElementById('progressFill');
+  const progressLabel = document.getElementById('progressLabel');
+  const progressPct = document.getElementById('progressPct');
+  const progressSub = document.getElementById('progressSub');
+  const readyBadge = document.getElementById('readyBadge');
+ 
+  loadBtn.disabled = true;
+  loadBtn.textContent = 'Loading...';
+  progressWrap.classList.add('visible');
+  readyBadge.style.display = 'none';
+ 
+  try {
+    engine = await webllm.CreateMLCEngine(modelId, {
+      initProgressCallback: (report) => {
+        const pct = Math.round((report.progress || 0) * 100);
+        progressFill.style.width = pct + '%';
+        progressPct.textContent = pct + '%';
+ 
+        if (report.text) {
+          // Show a clean status — strip verbose internals
+          const clean = report.text.replace(/\[.*?\]/g, '').trim();
+          progressLabel.textContent = clean.length > 60 ? clean.slice(0, 60) + '…' : (clean || 'Loading model...');
+        }
+ 
+        if (report.progress >= 1) {
+          progressLabel.textContent = 'Finalizing...';
+        }
+      }
+    });
+ 
+    progressWrap.classList.remove('visible');
+    readyBadge.style.display = 'flex';
+    document.getElementById('readyText').textContent = `${modelId.split('-').slice(0,3).join(' ')} — ready`;
+    document.getElementById('explainBtn').disabled = false;
+    loadBtn.textContent = 'Reload model';
+    loadBtn.disabled = false;
+ 
+  } catch (err) {
+    progressWrap.classList.remove('visible');
+    loadBtn.disabled = false;
+    loadBtn.textContent = 'Retry';
+    showError('Failed to load model: ' + err.message + '. Make sure you are using Chrome or Edge (WebGPU required).');
+  }
+};
+ 
+// ── Explain ──
+const audienceMap = {
+  beginner: 'a complete beginner with no programming background — use everyday analogies, avoid all technical jargon',
+  junior: 'a junior developer who knows the basics but may not know advanced patterns',
+  manager: 'a non-technical product manager who needs to understand what the code does without any technical details',
+  senior: 'a senior developer — be concise, use correct terminology, focus on patterns and architecture'
+};
+ 
+window.explain = async () => {
+  if (!engine) { showError('Load the AI model first (Step 1 above).'); return; }
+ 
+  const pasted = document.getElementById('codeInput').value.trim();
+  const blocks = [];
+  if (pasted) blocks.push({ name: 'pasted code', content: pasted });
+  files.forEach((c, n) => blocks.push({ name: n, content: c }));
+  if (blocks.length === 0) { showError('Paste some code or upload a file first.'); return; }
+ 
+  const audience = document.getElementById('audience').value;
+  // Local models have smaller context windows — cap more aggressively
+  const codeText = blocks.map(b => `=== ${b.name} ===\n${b.content.slice(0, 3000)}`).join('\n\n');
+ 
+  const prompt = `You are a code explainer. Explain the code below to ${audienceMap[audience]}.
+ 
+Use exactly these sections in your response:
+ 
+## What this does
+[1-3 sentence summary]
+ 
+## How it works
+[Step-by-step explanation in plain language]
+ 
+## Key parts
+[Bullet list of the most important functions or variables and what they do]
+ 
+## Plain english summary
+[One paragraph a non-programmer could understand]
+ 
+Be concrete. No hedging. Here is the code:
+ 
+${codeText}`;
+ 
+  document.getElementById('explainBtn').disabled = true;
+  document.getElementById('resultArea').innerHTML = `<div class="loading-row"><div class="spinner"></div><span>Thinking...</span></div>`;
+ 
+  try {
+    document.getElementById('resultArea').innerHTML = `
+      <div class="result">
+        <div class="result-header">
+          <span>✦ plain english explanation</span>
+          <button class="copy-btn" onclick="window._copyResult()">copy</button>
+        </div>
+        <div class="stream-pre" id="streamOut"></div>
+      </div>`;
+ 
+    const out = document.getElementById('streamOut');
+    let full = '';
+ 
+    const stream = await engine.chat.completions.create({
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.4,
+      max_tokens: 800,
+      stream: true,
+    });
+ 
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta?.content || '';
+      if (delta) {
+        full += delta;
+        out.textContent = full;
+      }
+    }
+ 
+    out.innerHTML = formatResult(full);
+ 
+  } catch (err) {
+    showError('Error during generation: ' + err.message);
+  } finally {
+    document.getElementById('explainBtn').disabled = false;
+  }
+};
+ 
+// ── Formatting ──
+function formatResult(text) {
+  const sections = text.split(/\n## /).filter(Boolean);
+  if (sections.length <= 1) {
+    return `<div class="expl-section"><div class="expl-content"><p>${text.replace(/\n\n/g, '</p><p>')}</p></div></div>`;
+  }
+  return sections.map(s => {
+    const nl = s.indexOf('\n');
+    const title = (nl === -1 ? s : s.slice(0, nl)).replace(/^## /, '').trim();
+    const body = nl === -1 ? '' : s.slice(nl + 1).trim();
+    const formatted = body
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/^[-•*] (.+)$/gm, '<li>$1</li>')
+      .replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>')
+      .replace(/<\/ul>\s*<ul>/g, '')
+      .split(/\n\n+/).map(p => p.startsWith('<') ? p : `<p>${p}</p>`).join('');
+    return `<div class="expl-section"><div class="expl-tag">${title}</div><div class="expl-content">${formatted}</div></div>`;
+  }).join('');
+}
+ 
+function showError(msg) {
+  document.getElementById('resultArea').innerHTML = `<div class="error-bar">⚠ ${msg}</div>`;
+  document.getElementById('explainBtn').disabled = false;
+}
+ 
+window._copyResult = () => {
+  const el = document.getElementById('streamOut');
+  if (el) navigator.clipboard.writeText(el.innerText).catch(() => {});
+};
+</script>
+</body>
+</html>
